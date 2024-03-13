@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 
 import duke.actions.AddTask;
 import duke.actions.DeleteTask;
@@ -50,13 +51,12 @@ public class Parser {
     /**
      * Parses the user input and executes the corresponding task operation.
      * @param input The user input command.
-     * @return A string representing the result or feedback of the operation.
+     * @return A string representing the result or reply of the operation.
      */
     public String parse(String input) {
         ArrayList<Task> inventory = storage.load();
         try {
-            assert inventory.size() < 0 : "Task List should not have a negative number of tasks";
-
+            assert inventory.size() >= 0 : "Task List should not have a negative number of tasks";
             if (input.toLowerCase().equalsIgnoreCase("list")) {
                 return handleListCommand(input);
             } else if (input.toLowerCase().startsWith("mark")) {
@@ -73,11 +73,40 @@ public class Parser {
                 return handleDeleteCommand(input, inventory);
             } else if (input.startsWith("find")) {
                 return handleFindCommand(input);
+            } else if (input.startsWith("sort")) {
+                return handleSort(input);
+            } else if (input.toLowerCase().startsWith("help")) {
+                return helpCommand(input);
             } else {
                 return "OOPS!!! I'm sorry, but that's an invalid command :-(";
             }
         } catch (DukeException e) {
             return e.getMessage();
+        }
+    }
+
+    /**
+     * Generates a help message containing instructions and formats for using the Duke application.
+     * @param input The user input to check if it is "help".
+     * @return A string containing the help message with commands and formats.
+     * @throws DukeException If the input is not "help".
+     */
+    private String helpCommand(String input) throws DukeException {
+        if (!input.trim().equals("help")) {
+            throw new DukeException("Please input only help");
+        } else {
+            String helpMessage = "Please input all time in 24hrs format and date in YYYY-MM-DD.\n"
+                + "Here are the list of commands and formats:\n"
+                + "1) todo <EVENT>\n"
+                + "2) deadline <EVENT> /by <DATE> <TIME>\n"
+                + "3) event EVENT /from <DATE> <TIME> /to <DATE> <TIME>\n"
+                + "4) mark <INDEX>\n"
+                + "5) unmark <INDEX>\n"
+                + "6) delete <INDEX>\n"
+                + "7) list\n"
+                + "8) sort\n"
+                + "9) find <KEYWORD>\n";
+            return helpMessage;
         }
     }
 
@@ -229,7 +258,7 @@ public class Parser {
                 DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HHmm");
                 dateTime1 = LocalDateTime.parse(dateTimeString1, formatter);
                 dateTime2 = LocalDateTime.parse(dateTimeString2, formatter);
-            } catch (DateTimeParseException e) {
+            } catch (Exception e) {
                 throw new DukeException("OOPS!!! The date format is invalid. " + validFormat);
             }
             Events eventTask = new Events(parts[0], dateTime1, dateTime2);
@@ -276,6 +305,50 @@ public class Parser {
             FindTask finder = new FindTask(storage, task);
             finder.createMatches();
             return finder.toString();
+        }
+    }
+
+    private String handleSort(String input) throws DukeException {
+        ArrayList<Task> temp = new ArrayList<>(storage.load());
+        temp.sort(new TaskComparator());
+        String result = "Here is the SORTED Task List!: \n";
+        for (Task i : temp) {
+            result += i.toString() + "\n";
+        }
+
+        return result;
+    }
+
+}
+
+
+class TaskComparator implements Comparator<Task> {
+    @Override
+    public int compare(Task task1, Task task2) {
+        // Compare ToDo tasks, place them at the back
+        if (task1 instanceof ToDo && task2 instanceof ToDo) {
+            return 0;
+        } else if (task1 instanceof ToDo) {
+            return 1;
+        } else if (task2 instanceof ToDo) {
+            return -1;
+        }
+
+        // Compare Deadline and Events tasks based on their deadlines
+        LocalDateTime deadline1 = getTaskDeadline(task1);
+        LocalDateTime deadline2 = getTaskDeadline(task2);
+
+        return deadline1.compareTo(deadline2);
+    }
+
+    private LocalDateTime getTaskDeadline(Task task) {
+        if (task instanceof Deadlines) {
+            return ((Deadlines) task).getAbsoluteDeadline();
+        } else if (task instanceof Events) {
+            return ((Events) task).getStart();
+        } else {
+            // ToDo tasks have no deadline
+            return LocalDateTime.MAX;
         }
     }
 }
